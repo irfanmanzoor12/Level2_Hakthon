@@ -51,6 +51,19 @@ You must set these environment variables in the Railway dashboard (not in .env f
 
 ## Troubleshooting
 
+### Build Error: "can't cd to backend"
+**Fixed!** The root `nixpacks.toml` now uses `backend/requirements.txt` path instead of `cd backend &&`.
+
+If you still encounter this error:
+- **Option A (Recommended)**: Set Root Directory in Railway:
+  1. Go to Service → Settings
+  2. Set **Root Directory** to `backend`
+  3. This uses `backend/nixpacks.toml` which doesn't have path issues
+
+- **Option B**: Current fix in root `nixpacks.toml`:
+  - Uses `pip install -r backend/requirements.txt`
+  - Start command still uses `cd backend` which works after install
+
 ### App crashes on startup
 - Check that all required environment variables are set in Railway
 - Verify DATABASE_URL is correct and accessible from Railway
