@@ -1,0 +1,27 @@
+# Spec-Kit Configuration for Todo App Phase I
+name: hackathon-todo-phase1
+version: "1.0"
+description: "In-memory Python console todo application"
+
+structure:
+  specs_dir: specs
+  features_dir: specs/features
+
+phases:
+  - name: phase1-console
+    features:
+      - add-task
+      - view-tasks
+      - update-task
+      - delete-task
+      - mark-complete
+    status: in-progress
+
+metadata:
+  hackathon: "Hackathon II - Evolution of Todo"
+  phase: "Phase I"
+  tech_stack:
+    - Python 3.13+
+    - UV
+    - Claude Code
+    - Spec-Kit Plus
