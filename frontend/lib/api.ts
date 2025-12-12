@@ -127,6 +127,14 @@ class ApiClient {
       method: 'DELETE',
     })
   }
+
+  // Chat endpoints
+  async sendChatMessage(userId: string, message: string): Promise<any> {
+    return this.request<any>(`/api/${userId}/chat/message`, {
+      method: 'POST',
+      body: JSON.stringify({ text: message }),
+    })
+  }
 }
 
 export const api = new ApiClient()

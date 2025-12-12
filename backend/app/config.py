@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     # Environment
     ENVIRONMENT: str = "development"
 
+    # Groq AI Configuration (FREE!)
+    GROQ_API_KEY: str
+    GROQ_MODEL: str = "llama-3.1-70b-versatile"
+    GROQ_MAX_TOKENS: int = 500
+    GROQ_TEMPERATURE: float = 0.7
+
     @property
     def cors_origins_list(self) -> List[str]:
         """Parse CORS origins from comma-separated string."""

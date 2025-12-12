@@ -30,6 +30,17 @@ export default function TasksPage() {
     }
   }, [])
 
+  // Listen for task updates from chat widget
+  useEffect(() => {
+    const handleTaskUpdate = () => {
+      if (user) {
+        loadTasks(user.id)
+      }
+    }
+    window.addEventListener('taskUpdated', handleTaskUpdate)
+    return () => window.removeEventListener('taskUpdated', handleTaskUpdate)
+  }, [user])
+
   const loadTasks = async (userId: string) => {
     try {
       const response = await api.getTasks(userId)

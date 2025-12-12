@@ -1,12 +1,13 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
+import { ChatWidget } from '@/components/ChatWidget'
 
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Hackathon Todo App',
-  description: 'Phase II - Full-Stack Web Application',
+  title: 'Hackathon Todo App - AI Powered',
+  description: 'Phase III - AI-Powered Task Management',
 }
 
 export default function RootLayout({
@@ -16,7 +17,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>{children}</body>
+      <body className={inter.className}>
+        {children}
+        <ChatWidget />
+      </body>
     </html>
   )
 }

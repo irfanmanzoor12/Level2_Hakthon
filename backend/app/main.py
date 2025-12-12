@@ -2,13 +2,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .database import create_tables
-from .routes import auth_router, tasks_router
+from .routes import auth_router, tasks_router, chat_router
 
 # Create FastAPI app
 app = FastAPI(
     title="Hackathon Todo API",
-    description="Phase II - Full-Stack Web Application Backend",
-    version="1.0.0",
+    description="Phase III - AI-Powered Task Management",
+    version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
 )
@@ -25,6 +25,7 @@ app.add_middleware(
 # Include routers
 app.include_router(auth_router)
 app.include_router(tasks_router)
+app.include_router(chat_router)
 
 
 @app.on_event("startup")
