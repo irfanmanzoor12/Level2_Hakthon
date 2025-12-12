@@ -30,18 +30,35 @@ app.include_router(tasks_router)
 @app.on_event("startup")
 def on_startup():
     """Create database tables on startup."""
-    create_tables()
+    try:
+        create_tables()
+        print("✅ Database tables created successfully")
+    except Exception as e:
+        print(f"⚠️  Warning: Could not create database tables: {e}")
+        print("The app will still start, but database operations may fail")
 
 
 @app.get("/api/health")
 def health_check():
     """Health check endpoint."""
     from datetime import datetime
+
+    # Test database connection
+    db_status = "disconnected"
+    try:
+        from .database import engine
+        with engine.connect() as conn:
+            conn.execute("SELECT 1")
+        db_status = "connected"
+    except Exception as e:
+        print(f"Database health check failed: {e}")
+        db_status = f"error: {str(e)[:50]}"
+
     return {
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat() + "Z",
         "version": "1.0.0",
-        "database": "connected"
+        "database": db_status
     }
 
 
