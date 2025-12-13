@@ -127,7 +127,7 @@ export function ChatWidget() {
               </svg>
               <div>
                 <h3 className="font-semibold">AI Task Assistant</h3>
-                <p className="text-xs text-blue-100">Powered by Groq (FREE!)</p>
+                <p className="text-xs text-blue-100">Powered by Gemini 2.5 Flash (FREE!)</p>
               </div>
             </div>
             <button

@@ -122,7 +122,8 @@ When users ask to perform task operations, use the provided functions. Be concis
 
 Guidelines:
 - For creating tasks, extract the task title from user's message
-- When listing tasks, present them in a clear, numbered format
+- When listing tasks, ALWAYS show the actual task ID (not numbered 1, 2, 3). Format: "Task ID X: title"
+- Users must use the actual task ID (not position number) to update/delete/complete tasks
 - Confirm actions after they're completed
 - Be conversational and supportive"""
         )
