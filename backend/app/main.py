@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .database import create_tables
+from .migrations import run_migrations
 from .routes import auth_router, tasks_router, chat_router
 
 # Create FastAPI app
@@ -30,12 +31,14 @@ app.include_router(chat_router)
 
 @app.on_event("startup")
 def on_startup():
-    """Create database tables on startup."""
+    """Create database tables and run migrations on startup."""
     try:
         create_tables()
         print("✅ Database tables created successfully")
+        run_migrations()
+        print("✅ Database migrations completed successfully")
     except Exception as e:
-        print(f"⚠️  Warning: Could not create database tables: {e}")
+        print(f"⚠️  Warning: Could not initialize database: {e}")
         print("The app will still start, but database operations may fail")
 
 
