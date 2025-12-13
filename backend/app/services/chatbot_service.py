@@ -1,4 +1,4 @@
-from groq import Groq
+import google.generativeai as genai
 from sqlmodel import Session
 from typing import List, Dict, Any, Optional
 import json
@@ -10,17 +10,113 @@ from .task_service import TaskService
 
 
 class ChatbotService:
-    """Service for handling AI chatbot interactions using Groq."""
+    """Service for handling AI chatbot interactions using Google Gemini."""
 
     @staticmethod
-    def _get_groq_client() -> Groq:
-        """Initialize and return Groq client."""
-        return Groq(api_key=settings.GROQ_API_KEY)
+    def _get_gemini_model():
+        """Initialize and return Gemini model."""
+        genai.configure(api_key=settings.GEMINI_API_KEY)
 
-    @staticmethod
-    def _get_system_prompt() -> str:
-        """Get the system prompt for the AI assistant."""
-        return """You are a helpful task management assistant. Help users manage their todo list by creating, viewing, updating, and deleting tasks.
+        # Define function declarations for Gemini
+        tools = [
+            {
+                "function_declarations": [
+                    {
+                        "name": "create_task",
+                        "description": "Create a new task in the user's todo list",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "title": {
+                                    "type": "string",
+                                    "description": "The title/name of the task to create"
+                                },
+                                "description": {
+                                    "type": "string",
+                                    "description": "Optional detailed description of the task"
+                                }
+                            },
+                            "required": ["title"]
+                        }
+                    },
+                    {
+                        "name": "list_tasks",
+                        "description": "Get all tasks from the user's todo list",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "filter": {
+                                    "type": "string",
+                                    "enum": ["all", "pending", "completed"],
+                                    "description": "Filter tasks by status (default: all)"
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "name": "update_task",
+                        "description": "Update an existing task's title or description",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "task_id": {
+                                    "type": "integer",
+                                    "description": "The ID of the task to update"
+                                },
+                                "title": {
+                                    "type": "string",
+                                    "description": "New title for the task"
+                                },
+                                "description": {
+                                    "type": "string",
+                                    "description": "New description for the task"
+                                }
+                            },
+                            "required": ["task_id"]
+                        }
+                    },
+                    {
+                        "name": "toggle_task_complete",
+                        "description": "Mark a task as complete or incomplete",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "task_id": {
+                                    "type": "integer",
+                                    "description": "The ID of the task to toggle"
+                                }
+                            },
+                            "required": ["task_id"]
+                        }
+                    },
+                    {
+                        "name": "delete_task",
+                        "description": "Delete a task from the todo list",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "task_id": {
+                                    "type": "integer",
+                                    "description": "The ID of the task to delete"
+                                }
+                            },
+                            "required": ["task_id"]
+                        }
+                    }
+                ]
+            }
+        ]
+
+        generation_config = {
+            "temperature": settings.GEMINI_TEMPERATURE,
+            "max_output_tokens": settings.GEMINI_MAX_TOKENS,
+        }
+
+        model = genai.GenerativeModel(
+            model_name=settings.GEMINI_MODEL,
+            tools=tools,
+            generation_config=generation_config,
+            system_instruction="""You are a helpful task management assistant. Help users manage their todo list by creating, viewing, updating, and deleting tasks.
 
 When users ask to perform task operations, use the provided functions. Be concise, friendly, and helpful.
 
@@ -29,94 +125,9 @@ Guidelines:
 - When listing tasks, present them in a clear, numbered format
 - Confirm actions after they're completed
 - Be conversational and supportive"""
+        )
 
-    @staticmethod
-    def _get_function_definitions() -> List[Dict[str, Any]]:
-        """Get function definitions for Groq function calling."""
-        return [
-            {
-                "name": "create_task",
-                "description": "Create a new task in the user's todo list",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "title": {
-                            "type": "string",
-                            "description": "The title/name of the task to create"
-                        },
-                        "description": {
-                            "type": "string",
-                            "description": "Optional detailed description of the task"
-                        }
-                    },
-                    "required": ["title"]
-                }
-            },
-            {
-                "name": "list_tasks",
-                "description": "Get all tasks from the user's todo list",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "filter": {
-                            "type": "string",
-                            "enum": ["all", "pending", "completed"],
-                            "description": "Filter tasks by status (default: all)"
-                        }
-                    }
-                }
-            },
-            {
-                "name": "update_task",
-                "description": "Update an existing task's title or description",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "task_id": {
-                            "type": "integer",
-                            "description": "The ID of the task to update"
-                        },
-                        "title": {
-                            "type": "string",
-                            "description": "New title for the task"
-                        },
-                        "description": {
-                            "type": "string",
-                            "description": "New description for the task"
-                        }
-                    },
-                    "required": ["task_id"]
-                }
-            },
-            {
-                "name": "toggle_task_complete",
-                "description": "Mark a task as complete or incomplete",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "task_id": {
-                            "type": "integer",
-                            "description": "The ID of the task to toggle"
-                        }
-                    },
-                    "required": ["task_id"]
-                }
-            },
-            {
-                "name": "delete_task",
-                "description": "Delete a task from the todo list",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "task_id": {
-                            "type": "integer",
-                            "description": "The ID of the task to delete"
-                        }
-                    },
-                    "required": ["task_id"]
-                }
-            }
-        ]
+        return model
 
     @staticmethod
     def _execute_function(
@@ -264,80 +275,63 @@ Guidelines:
             Dictionary with 'message' and optional 'actions_performed'
         """
         try:
-            client = ChatbotService._get_groq_client()
+            model = ChatbotService._get_gemini_model()
+            chat = model.start_chat(history=[])
 
-            # Build messages for the conversation
-            messages = [
-                {
-                    "role": "system",
-                    "content": ChatbotService._get_system_prompt()
-                },
-                {
-                    "role": "user",
-                    "content": message
-                }
-            ]
+            # Send message to Gemini
+            response = chat.send_message(message)
 
-            # Call Groq API with function calling
-            response = client.chat.completions.create(
-                model=settings.GROQ_MODEL,
-                messages=messages,
-                tools=[
-                    {
-                        "type": "function",
-                        "function": func
-                    }
-                    for func in ChatbotService._get_function_definitions()
-                ],
-                tool_choice="auto",
-                max_tokens=settings.GROQ_MAX_TOKENS,
-                temperature=settings.GROQ_TEMPERATURE
-            )
-
-            response_message = response.choices[0].message
             actions_performed = []
 
             # Check if the model wants to call functions
-            if response_message.tool_calls:
-                for tool_call in response_message.tool_calls:
-                    function_name = tool_call.function.name
-                    function_args = json.loads(tool_call.function.arguments)
+            if response.candidates[0].content.parts:
+                for part in response.candidates[0].content.parts:
+                    if hasattr(part, 'function_call') and part.function_call:
+                        function_call = part.function_call
+                        function_name = function_call.name
+                        function_args = dict(function_call.args)
 
-                    # Execute the function
-                    result = ChatbotService._execute_function(
-                        session,
-                        function_name,
-                        function_args,
-                        user_id
-                    )
+                        # Execute the function
+                        result = ChatbotService._execute_function(
+                            session,
+                            function_name,
+                            function_args,
+                            user_id
+                        )
 
-                    if result.get("success"):
-                        actions_performed.append(result["message"])
+                        if result.get("success"):
+                            actions_performed.append(result["message"])
 
-                    # Add function result to messages for follow-up
-                    messages.append({
-                        "role": "assistant",
-                        "content": None,
-                        "tool_calls": [tool_call.model_dump()]
-                    })
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "content": json.dumps(result)
-                    })
+                        # Send function result back to Gemini
+                        function_response = {
+                            "function_call": {
+                                "name": function_name,
+                            },
+                            "function_response": {
+                                "name": function_name,
+                                "response": result
+                            }
+                        }
 
-                # Get final response after function calls
-                final_response = client.chat.completions.create(
-                    model=settings.GROQ_MODEL,
-                    messages=messages,
-                    max_tokens=settings.GROQ_MAX_TOKENS,
-                    temperature=settings.GROQ_TEMPERATURE
-                )
+                        # Get final response after function execution
+                        final_response = chat.send_message(
+                            genai.protos.Content(
+                                parts=[genai.protos.Part(
+                                    function_response=genai.protos.FunctionResponse(
+                                        name=function_name,
+                                        response={"result": result}
+                                    )
+                                )]
+                            )
+                        )
 
-                final_message = final_response.choices[0].message.content
+                        final_message = final_response.text
+                        break
+                else:
+                    # No function calls, just return the response
+                    final_message = response.text
             else:
-                # No function calls, just return the response
-                final_message = response_message.content
+                final_message = response.text
 
             return {
                 "message": final_message or "I'm ready to help with your tasks!",

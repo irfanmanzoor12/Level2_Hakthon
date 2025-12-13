@@ -19,11 +19,11 @@ class Settings(BaseSettings):
     # Environment
     ENVIRONMENT: str = "development"
 
-    # Groq AI Configuration (FREE!)
-    GROQ_API_KEY: str
-    GROQ_MODEL: str = "llama-3.1-8b-instant"
-    GROQ_MAX_TOKENS: int = 500
-    GROQ_TEMPERATURE: float = 0.7
+    # Gemini AI Configuration (FREE!)
+    GEMINI_API_KEY: str
+    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_MAX_TOKENS: int = 1000
+    GEMINI_TEMPERATURE: float = 0.7
 
     @property
     def cors_origins_list(self) -> List[str]:
