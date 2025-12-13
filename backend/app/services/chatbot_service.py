@@ -1,8 +1,9 @@
 import google.generativeai as genai
 from sqlmodel import Session
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any
 import json
 import uuid
+from datetime import datetime, date
 from ..config import settings
 from ..models.user import User
 from ..models.task import TaskCreate, TaskUpdate
@@ -10,250 +11,147 @@ from .task_service import TaskService
 
 
 class ChatbotService:
-    """Service for handling AI chatbot interactions using Google Gemini."""
+    """Service for handling AI chatbot interactions using Google Gemini (headless interpreter mode)."""
+
+    @staticmethod
+    def _get_headless_prompt() -> str:
+        """Get the headless command interpreter system prompt."""
+        current_date = datetime.now().date()
+        current_year = current_date.year
+
+        return f"""Role:
+You are a headless command interpreter for a Todo application.
+Current date: {current_date.isoformat()} (format: YYYY-MM-DD, example: 2025-12-13)
+Current year: {current_year}
+
+Rules:
+- Interpret input literally; do NOT infer, correct, or enrich.
+- Create exactly ONE task per request; ignore additional tasks.
+- Preserve text exactly as written (URLs, numbers, typos, casing).
+- Extract due_date if a specific calendar date is given:
+    * Formats accepted (in precedence order):
+      1. YYYY-MM-DD (2025-12-20)
+      2. Month DD YYYY (Dec 20 2025, December 20 2025 - case-insensitive)
+      3. DD/MM/YYYY (20/12/2025)
+      4. MM/DD/YYYY (12/20/2025)
+    * If year is missing, assume current year ({current_year})
+    * Normalize to YYYY-MM-DD in output
+    * Ambiguous dates (01/02/2025) are interpreted as DD/MM/YYYY
+    * Reject relative dates: today, tomorrow, next week, Monday, etc.
+- Extract tags ONLY if prefixed with # followed by alphanumeric characters.
+    * Tags must be space-separated: "#tag1 #tag2" (valid)
+    * Ignore "#" alone or "#tag1#tag2" (no space)
+    * Case-sensitive: #Invoice and #invoice are different tags
+    * Remove # in output
+- If text is empty after processing, return {{"error":"invalid_request"}}.
+- If no valid date found, set due_date to null.
+- If no valid tags found, set tags to [].
+- Return ONLY a JSON object; no prose, no markdown, no explanations.
+
+Supported Actions (Phase III default: create_task):
+- create_task (implemented in Phase III)
+- list_tasks (reserved for Phase IV)
+- update_task (reserved for Phase IV)
+- toggle_complete (reserved for Phase IV)
+- delete_task (reserved for Phase IV)
+
+Output Schema (Phase III):
+
+{{
+  "action": "create_task",
+  "data": {{
+    "text": "string",
+    "due_date": "YYYY-MM-DD or null",
+    "tags": ["array of strings"]
+  }}
+}}
+
+Error Response:
+
+{{
+  "error": "invalid_request"
+}}"""
 
     @staticmethod
     def _get_gemini_model():
-        """Initialize and return Gemini model."""
+        """Initialize and return Gemini model for headless mode."""
         genai.configure(api_key=settings.GEMINI_API_KEY)
 
-        # Define function declarations for Gemini
-        tools = [
-            {
-                "function_declarations": [
-                    {
-                        "name": "create_task",
-                        "description": "Create a new task in the user's todo list",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "title": {
-                                    "type": "string",
-                                    "description": "The title/name of the task to create"
-                                },
-                                "description": {
-                                    "type": "string",
-                                    "description": "Optional detailed description of the task"
-                                }
-                            },
-                            "required": ["title"]
-                        }
-                    },
-                    {
-                        "name": "list_tasks",
-                        "description": "Get all tasks from the user's todo list",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "filter": {
-                                    "type": "string",
-                                    "enum": ["all", "pending", "completed"],
-                                    "description": "Filter tasks by status (default: all)"
-                                }
-                            }
-                        }
-                    },
-                    {
-                        "name": "update_task",
-                        "description": "Update an existing task's title or description",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "task_id": {
-                                    "type": "integer",
-                                    "description": "The ID of the task to update"
-                                },
-                                "title": {
-                                    "type": "string",
-                                    "description": "New title for the task"
-                                },
-                                "description": {
-                                    "type": "string",
-                                    "description": "New description for the task"
-                                }
-                            },
-                            "required": ["task_id"]
-                        }
-                    },
-                    {
-                        "name": "toggle_task_complete",
-                        "description": "Mark a task as complete or incomplete",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "task_id": {
-                                    "type": "integer",
-                                    "description": "The ID of the task to toggle"
-                                }
-                            },
-                            "required": ["task_id"]
-                        }
-                    },
-                    {
-                        "name": "delete_task",
-                        "description": "Delete a task from the todo list",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "task_id": {
-                                    "type": "integer",
-                                    "description": "The ID of the task to delete"
-                                }
-                            },
-                            "required": ["task_id"]
-                        }
-                    }
-                ]
-            }
-        ]
-
         generation_config = {
-            "temperature": settings.GEMINI_TEMPERATURE,
-            "max_output_tokens": settings.GEMINI_MAX_TOKENS,
+            "temperature": 0.1,  # Low temperature for consistent parsing
+            "max_output_tokens": 500,
         }
 
         model = genai.GenerativeModel(
             model_name=settings.GEMINI_MODEL,
-            tools=tools,
             generation_config=generation_config,
-            system_instruction="""You are a helpful task management assistant. Help users manage their todo list by creating, viewing, updating, and deleting tasks.
-
-When users ask to perform task operations, use the provided functions. Be concise, friendly, and helpful.
-
-Guidelines:
-- For creating tasks, extract the task title from user's message
-- When listing tasks, ALWAYS show the actual task ID (not numbered 1, 2, 3). Format: "Task ID X: title"
-- Users must use the actual task ID (not position number) to update/delete/complete tasks
-- Confirm actions after they're completed
-- Be conversational and supportive"""
+            system_instruction=ChatbotService._get_headless_prompt()
         )
 
         return model
 
     @staticmethod
-    def _execute_function(
+    def _parse_json_response(response_text: str) -> Dict[str, Any]:
+        """Parse JSON from Gemini response, handling potential markdown wrapping."""
+        try:
+            # Remove markdown code blocks if present
+            text = response_text.strip()
+            if text.startswith("```json"):
+                text = text[7:]
+            if text.startswith("```"):
+                text = text[3:]
+            if text.endswith("```"):
+                text = text[:-3]
+
+            text = text.strip()
+            return json.loads(text)
+        except json.JSONDecodeError as e:
+            print(f"JSON parse error: {e}, Response: {response_text}")
+            return {"error": "invalid_request"}
+
+    @staticmethod
+    def _execute_create_task(
         session: Session,
-        function_name: str,
-        arguments: Dict[str, Any],
+        data: Dict[str, Any],
         user_id: uuid.UUID
     ) -> Dict[str, Any]:
-        """Execute a function call from the AI."""
+        """Execute create_task action."""
         try:
-            if function_name == "create_task":
-                task_data = TaskCreate(
-                    title=arguments["title"],
-                    description=arguments.get("description"),
-                    completed=False
-                )
-                task = TaskService.create_task(session, task_data, user_id)
-                return {
-                    "success": True,
-                    "task": {
-                        "id": task.id,
-                        "title": task.title,
-                        "description": task.description,
-                        "completed": task.completed
-                    },
-                    "message": f"Created task: '{task.title}'"
-                }
+            # Parse due_date from string to date object
+            due_date = None
+            if data.get("due_date"):
+                try:
+                    due_date = datetime.strptime(data["due_date"], "%Y-%m-%d").date()
+                except ValueError:
+                    due_date = None
 
-            elif function_name == "list_tasks":
-                filter_type = arguments.get("filter", "all")
-                tasks = TaskService.get_all_tasks(session, user_id)
+            # Create task
+            task_data = TaskCreate(
+                title=data["text"],
+                description=None,
+                due_date=due_date,
+                tags=data.get("tags", [])
+            )
 
-                # Apply filter
-                if filter_type == "pending":
-                    tasks = [t for t in tasks if not t.completed]
-                elif filter_type == "completed":
-                    tasks = [t for t in tasks if t.completed]
+            task = TaskService.create_task(session, task_data, user_id)
 
-                task_list = [
-                    {
-                        "id": t.id,
-                        "title": t.title,
-                        "completed": t.completed
-                    }
-                    for t in tasks
-                ]
-
-                return {
-                    "success": True,
-                    "tasks": task_list,
-                    "count": len(task_list),
-                    "message": f"Found {len(task_list)} task(s)"
-                }
-
-            elif function_name == "update_task":
-                task_id = arguments["task_id"]
-                task_update = TaskUpdate(
-                    title=arguments.get("title"),
-                    description=arguments.get("description")
-                )
-                task = TaskService.update_task(session, task_id, task_update, user_id)
-
-                if not task:
-                    return {
-                        "success": False,
-                        "message": f"Task {task_id} not found"
-                    }
-
-                return {
-                    "success": True,
-                    "task": {
-                        "id": task.id,
-                        "title": task.title,
-                        "description": task.description,
-                        "completed": task.completed
-                    },
-                    "message": f"Updated task: '{task.title}'"
-                }
-
-            elif function_name == "toggle_task_complete":
-                task_id = arguments["task_id"]
-                task = TaskService.toggle_complete(session, task_id, user_id)
-
-                if not task:
-                    return {
-                        "success": False,
-                        "message": f"Task {task_id} not found"
-                    }
-
-                status = "completed" if task.completed else "pending"
-                return {
-                    "success": True,
-                    "task": {
-                        "id": task.id,
-                        "title": task.title,
-                        "completed": task.completed
-                    },
-                    "message": f"Marked '{task.title}' as {status}"
-                }
-
-            elif function_name == "delete_task":
-                task_id = arguments["task_id"]
-                success = TaskService.delete_task(session, task_id, user_id)
-
-                if not success:
-                    return {
-                        "success": False,
-                        "message": f"Task {task_id} not found"
-                    }
-
-                return {
-                    "success": True,
-                    "message": f"Deleted task {task_id}"
-                }
-
-            else:
-                return {
-                    "success": False,
-                    "message": f"Unknown function: {function_name}"
-                }
+            return {
+                "success": True,
+                "task": {
+                    "id": task.id,
+                    "title": task.title,
+                    "due_date": task.due_date.isoformat() if task.due_date else None,
+                    "tags": task.tags,
+                    "completed": task.completed
+                },
+                "message": f"✓ Created task ID {task.id}"
+            }
 
         except Exception as e:
+            print(f"Error creating task: {e}")
             return {
                 "success": False,
-                "message": f"Error executing {function_name}: {str(e)}"
+                "message": f"Error: {str(e)}"
             }
 
     @staticmethod
@@ -264,7 +162,7 @@ Guidelines:
         current_user: User
     ) -> Dict[str, Any]:
         """
-        Process a chat message and return AI response.
+        Process a chat message using headless interpreter mode.
 
         Args:
             session: Database session
@@ -277,67 +175,42 @@ Guidelines:
         """
         try:
             model = ChatbotService._get_gemini_model()
-            chat = model.start_chat(history=[])
 
             # Send message to Gemini
-            response = chat.send_message(message)
+            response = model.generate_content(message)
 
-            actions_performed = []
+            # Parse JSON response
+            parsed = ChatbotService._parse_json_response(response.text)
 
-            # Check if the model wants to call functions
-            if response.candidates[0].content.parts:
-                for part in response.candidates[0].content.parts:
-                    if hasattr(part, 'function_call') and part.function_call:
-                        function_call = part.function_call
-                        function_name = function_call.name
-                        function_args = dict(function_call.args)
+            # Check for error
+            if "error" in parsed:
+                return {
+                    "message": "Invalid request. Please provide a task to create.",
+                    "actions_performed": None
+                }
 
-                        # Execute the function
-                        result = ChatbotService._execute_function(
-                            session,
-                            function_name,
-                            function_args,
-                            user_id
-                        )
+            # Execute action
+            action = parsed.get("action")
+            data = parsed.get("data", {})
 
-                        if result.get("success"):
-                            actions_performed.append(result["message"])
+            if action == "create_task":
+                result = ChatbotService._execute_create_task(session, data, user_id)
 
-                        # Send function result back to Gemini
-                        function_response = {
-                            "function_call": {
-                                "name": function_name,
-                            },
-                            "function_response": {
-                                "name": function_name,
-                                "response": result
-                            }
-                        }
-
-                        # Get final response after function execution
-                        final_response = chat.send_message(
-                            genai.protos.Content(
-                                parts=[genai.protos.Part(
-                                    function_response=genai.protos.FunctionResponse(
-                                        name=function_name,
-                                        response={"result": result}
-                                    )
-                                )]
-                            )
-                        )
-
-                        final_message = final_response.text
-                        break
+                if result.get("success"):
+                    return {
+                        "message": result["message"],
+                        "actions_performed": [result["message"]]
+                    }
                 else:
-                    # No function calls, just return the response
-                    final_message = response.text
+                    return {
+                        "message": result["message"],
+                        "actions_performed": None
+                    }
             else:
-                final_message = response.text
-
-            return {
-                "message": final_message or "I'm ready to help with your tasks!",
-                "actions_performed": actions_performed if actions_performed else None
-            }
+                return {
+                    "message": f"Action '{action}' not yet implemented.",
+                    "actions_performed": None
+                }
 
         except Exception as e:
             print(f"Chatbot error: {e}")

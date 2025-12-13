@@ -241,6 +241,23 @@ export default function TasksPage() {
                         {task.description && (
                           <p className="mt-1 text-gray-600">{task.description}</p>
                         )}
+                        {task.due_date && (
+                          <p className="mt-2 text-sm text-orange-600 font-medium">
+                            📅 Due: {new Date(task.due_date).toLocaleDateString()}
+                          </p>
+                        )}
+                        {task.tags && task.tags.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {task.tags.map((tag, index) => (
+                              <span
+                                key={index}
+                                className="inline-flex items-center rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-800"
+                              >
+                                #{tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                         <p className="mt-2 text-xs text-gray-400">
                           Created: {new Date(task.created_at).toLocaleDateString()}
                         </p>

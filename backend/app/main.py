@@ -7,8 +7,8 @@ from .routes import auth_router, tasks_router, chat_router
 # Create FastAPI app
 app = FastAPI(
     title="Hackathon Todo API",
-    description="Phase III - AI-Powered Task Management with Google Gemini",
-    version="3.0.0",
+    description="Phase III+ - Headless AI Interpreter with Tags & Due Dates",
+    version="4.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
 )
@@ -59,7 +59,7 @@ def health_check():
     return {
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat() + "Z",
-        "version": "2.0.0",
+        "version": "4.0.0",
         "database": db_status
     }
 
