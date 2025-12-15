@@ -48,15 +48,25 @@ Rules:
 - If no valid tags found, set tags to [].
 - Return ONLY a JSON object; no prose, no markdown, no explanations.
 
-Supported Actions (Phase III default: create_task):
-- create_task (implemented in Phase III)
-- list_tasks (reserved for Phase IV)
-- update_task (reserved for Phase IV)
-- toggle_complete (reserved for Phase IV)
-- delete_task (reserved for Phase IV)
+Supported Actions:
+1. create_task - Create a new task
+   Input examples: "add task to buy milk", "create task: finish report #work 2025-12-20"
 
-Output Schema (Phase III):
+2. list_tasks - Show all tasks or filter tasks
+   Input examples: "show my tasks", "list all tasks", "what do I have to do", "show incomplete tasks"
 
+3. update_task - Update task fields
+   Input examples: "update task 5 title to 'New Title'", "change description of task 3 to 'Updated'"
+
+4. toggle_complete - Mark task complete or incomplete
+   Input examples: "mark task 5 as done", "complete task 3", "mark task 2 as incomplete"
+
+5. delete_task - Delete a task
+   Input examples: "delete task 5", "remove task 3"
+
+Output Schemas:
+
+1. CREATE_TASK:
 {{
   "action": "create_task",
   "data": {{
@@ -66,8 +76,45 @@ Output Schema (Phase III):
   }}
 }}
 
-Error Response:
+2. LIST_TASKS:
+{{
+  "action": "list_tasks",
+  "data": {{
+    "filter": "all" or "completed" or "incomplete"
+  }}
+}}
 
+3. UPDATE_TASK:
+{{
+  "action": "update_task",
+  "data": {{
+    "task_id": number,
+    "updates": {{
+      "title": "string (optional)",
+      "description": "string (optional)",
+      "due_date": "YYYY-MM-DD or null (optional)",
+      "tags": ["array of strings (optional)"]
+    }}
+  }}
+}}
+
+4. TOGGLE_COMPLETE:
+{{
+  "action": "toggle_complete",
+  "data": {{
+    "task_id": number
+  }}
+}}
+
+5. DELETE_TASK:
+{{
+  "action": "delete_task",
+  "data": {{
+    "task_id": number
+  }}
+}}
+
+Error Response:
 {{
   "error": "invalid_request"
 }}"""
@@ -155,6 +202,195 @@ Error Response:
             }
 
     @staticmethod
+    def _execute_list_tasks(
+        session: Session,
+        data: Dict[str, Any],
+        user_id: uuid.UUID
+    ) -> Dict[str, Any]:
+        """Execute list_tasks action."""
+        try:
+            # Get all tasks
+            all_tasks = TaskService.get_all_tasks(session, user_id)
+
+            # Apply filter
+            filter_type = data.get("filter", "all")
+            if filter_type == "completed":
+                tasks = [t for t in all_tasks if t.completed]
+            elif filter_type == "incomplete":
+                tasks = [t for t in all_tasks if not t.completed]
+            else:
+                tasks = all_tasks
+
+            # Format tasks for response
+            if not tasks:
+                message = "You have no tasks."
+                if filter_type == "completed":
+                    message = "You have no completed tasks."
+                elif filter_type == "incomplete":
+                    message = "You have no incomplete tasks."
+                return {
+                    "success": True,
+                    "message": message,
+                    "tasks": []
+                }
+
+            # Build formatted message
+            lines = []
+            for task in tasks:
+                status = "✓" if task.completed else "○"
+                due_str = f" (due: {task.due_date.isoformat()})" if task.due_date else ""
+                tags_str = f" {' '.join(['#' + tag for tag in task.tags])}" if task.tags else ""
+                lines.append(f"{status} [{task.id}] {task.title}{due_str}{tags_str}")
+
+            message = f"Found {len(tasks)} task(s):\n" + "\n".join(lines)
+
+            return {
+                "success": True,
+                "message": message,
+                "tasks": [{"id": t.id, "title": t.title, "completed": t.completed} for t in tasks]
+            }
+
+        except Exception as e:
+            print(f"Error listing tasks: {e}")
+            return {
+                "success": False,
+                "message": f"Error: {str(e)}"
+            }
+
+    @staticmethod
+    def _execute_update_task(
+        session: Session,
+        data: Dict[str, Any],
+        user_id: uuid.UUID
+    ) -> Dict[str, Any]:
+        """Execute update_task action."""
+        try:
+            task_id = data.get("task_id")
+            updates = data.get("updates", {})
+
+            if not task_id:
+                return {
+                    "success": False,
+                    "message": "Task ID is required"
+                }
+
+            # Parse due_date if present
+            if "due_date" in updates and updates["due_date"]:
+                try:
+                    updates["due_date"] = datetime.strptime(updates["due_date"], "%Y-%m-%d").date()
+                except ValueError:
+                    updates["due_date"] = None
+
+            # Create TaskUpdate object
+            task_update = TaskUpdate(**updates)
+
+            # Update task
+            task = TaskService.update_task(session, task_id, task_update, user_id)
+
+            if not task:
+                return {
+                    "success": False,
+                    "message": f"Task {task_id} not found"
+                }
+
+            return {
+                "success": True,
+                "message": f"✓ Updated task {task_id}",
+                "task": {
+                    "id": task.id,
+                    "title": task.title,
+                    "completed": task.completed
+                }
+            }
+
+        except Exception as e:
+            print(f"Error updating task: {e}")
+            return {
+                "success": False,
+                "message": f"Error: {str(e)}"
+            }
+
+    @staticmethod
+    def _execute_toggle_complete(
+        session: Session,
+        data: Dict[str, Any],
+        user_id: uuid.UUID
+    ) -> Dict[str, Any]:
+        """Execute toggle_complete action."""
+        try:
+            task_id = data.get("task_id")
+
+            if not task_id:
+                return {
+                    "success": False,
+                    "message": "Task ID is required"
+                }
+
+            # Toggle completion
+            task = TaskService.toggle_complete(session, task_id, user_id)
+
+            if not task:
+                return {
+                    "success": False,
+                    "message": f"Task {task_id} not found"
+                }
+
+            status = "completed" if task.completed else "incomplete"
+            return {
+                "success": True,
+                "message": f"✓ Marked task {task_id} as {status}",
+                "task": {
+                    "id": task.id,
+                    "title": task.title,
+                    "completed": task.completed
+                }
+            }
+
+        except Exception as e:
+            print(f"Error toggling task: {e}")
+            return {
+                "success": False,
+                "message": f"Error: {str(e)}"
+            }
+
+    @staticmethod
+    def _execute_delete_task(
+        session: Session,
+        data: Dict[str, Any],
+        user_id: uuid.UUID
+    ) -> Dict[str, Any]:
+        """Execute delete_task action."""
+        try:
+            task_id = data.get("task_id")
+
+            if not task_id:
+                return {
+                    "success": False,
+                    "message": "Task ID is required"
+                }
+
+            # Delete task
+            success = TaskService.delete_task(session, task_id, user_id)
+
+            if not success:
+                return {
+                    "success": False,
+                    "message": f"Task {task_id} not found"
+                }
+
+            return {
+                "success": True,
+                "message": f"✓ Deleted task {task_id}"
+            }
+
+        except Exception as e:
+            print(f"Error deleting task: {e}")
+            return {
+                "success": False,
+                "message": f"Error: {str(e)}"
+            }
+
+    @staticmethod
     def process_message(
         session: Session,
         message: str,
@@ -193,22 +429,32 @@ Error Response:
             action = parsed.get("action")
             data = parsed.get("data", {})
 
+            # Route to appropriate action handler
             if action == "create_task":
                 result = ChatbotService._execute_create_task(session, data, user_id)
-
-                if result.get("success"):
-                    return {
-                        "message": result["message"],
-                        "actions_performed": [result["message"]]
-                    }
-                else:
-                    return {
-                        "message": result["message"],
-                        "actions_performed": None
-                    }
+            elif action == "list_tasks":
+                result = ChatbotService._execute_list_tasks(session, data, user_id)
+            elif action == "update_task":
+                result = ChatbotService._execute_update_task(session, data, user_id)
+            elif action == "toggle_complete":
+                result = ChatbotService._execute_toggle_complete(session, data, user_id)
+            elif action == "delete_task":
+                result = ChatbotService._execute_delete_task(session, data, user_id)
             else:
                 return {
-                    "message": f"Action '{action}' not yet implemented.",
+                    "message": f"Unknown action '{action}'.",
+                    "actions_performed": None
+                }
+
+            # Return result
+            if result.get("success"):
+                return {
+                    "message": result["message"],
+                    "actions_performed": [result["message"]]
+                }
+            else:
+                return {
+                    "message": result["message"],
                     "actions_performed": None
                 }
 
