@@ -33,6 +33,8 @@ class TaskService:
             title=task_data.title,
             description=description,
             completed=False,
+            due_date=task_data.due_date,
+            tags=task_data.tags if task_data.tags else []
         )
         session.add(task)
         session.commit()

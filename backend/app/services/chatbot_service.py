@@ -283,7 +283,9 @@ Output: {{"action": "create_task", "data": {{"text": "finish report", "due_date"
             for task in tasks:
                 status = "✓" if task.completed else "○"
                 due_str = f" (due: {task.due_date.isoformat()})" if task.due_date else ""
-                tags_str = f" {' '.join(['#' + tag for tag in task.tags])}" if task.tags else ""
+                # Handle tags safely (might be None in database)
+                tags_list = task.tags if task.tags and isinstance(task.tags, list) else []
+                tags_str = f" {' '.join(['#' + tag for tag in tags_list])}" if tags_list else ""
                 lines.append(f"{status} [{task.id}] {task.title}{due_str}{tags_str}")
 
             message = f"Found {len(tasks)} task(s):\n" + "\n".join(lines)
@@ -295,10 +297,12 @@ Output: {{"action": "create_task", "data": {{"text": "finish report", "due_date"
             }
 
         except Exception as e:
+            import traceback
             print(f"Error listing tasks: {e}")
+            print(f"Traceback: {traceback.format_exc()}")
             return {
                 "success": False,
-                "message": f"Error: {str(e)}"
+                "message": f"Error listing tasks: {str(e)}"
             }
 
     @staticmethod
